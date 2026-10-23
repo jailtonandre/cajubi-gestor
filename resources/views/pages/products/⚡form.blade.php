@@ -27,6 +27,19 @@ new #[Title('Cadastro de produto')] class extends Component
     public function updatedImage(): void
     {
         $this->validate(['image' => CatalogImage::rules()], attributes: ['image' => 'imagem']);
+        $this->removeImage = false;
+    }
+
+    public function removeSelectedImage(): void
+    {
+        $this->reset('image');
+        $this->removeImage = true;
+        $this->resetValidation('image');
+    }
+
+    public function undoImageRemoval(): void
+    {
+        $this->removeImage = false;
     }
 
     #[Locked]

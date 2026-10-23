@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Foundation\Console\ServeCommand;
 use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Support\Facades\RateLimiter;
@@ -24,6 +25,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (PHP_OS_FAMILY === 'Windows' && $this->app->runningInConsole() && $this->app->environment('local')) {
+            ServeCommand::$passthroughVariables = array_values(array_unique([
+                ...ServeCommand::$passthroughVariables,
+                'TEMP', 'TMP', 'USERPROFILE',
+            ]));
+        }
+
         $this->app->setLocale('pt_BR');
         Livewire::addPersistentMiddleware([AuthenticateSession::class]);
         RateLimiter::for('administrative-login', fn (Request $request) => [

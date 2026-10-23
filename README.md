@@ -56,3 +56,13 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Desenvolvimento local no Windows
+
+Inicie a aplicação com `php artisan serve` e os assets com `npm run dev` (ou gere-os com `npm run build`).
+
+No Windows, em `APP_ENV=local`, o bootstrap preserva `TEMP`, `TMP` e `USERPROFILE` no processo filho do servidor. Isso permite que o PHP utilize o diretório temporário gravável do usuário para receber uploads, sem caminhos específicos do computador ou alterações em `vendor/` e no `php.ini`.
+
+Depois de atualizar o bootstrap, encerre o servidor antigo com `Ctrl+C` e execute novamente `php artisan serve`. As variáveis de ambiente são herdadas na criação do processo; atualizar apenas a página não aplica a correção. As pastas temporárias indicadas pelo ambiente devem existir e permitir escrita ao usuário que inicia o servidor.
+
+A configuração é restrita ao desenvolvimento local no Windows. Linux e produção continuam utilizando a configuração de temporários do próprio servidor. O limite das imagens do catálogo permanece em 2 MB.

@@ -1,6 +1,16 @@
 <?php
 
 return [
+    'uploaded' => 'Não foi possível receber o arquivo. Selecione-o novamente e tente outra vez.',
+    'file' => 'O arquivo selecionado é inválido. Selecione outro arquivo.',
+    'image' => 'O arquivo selecionado não é uma imagem válida.',
+    'mimes' => 'O arquivo deve ser do tipo: :values.',
+    'custom' => [
+        'image' => [
+            'max' => 'A imagem deve ter no máximo 2 MB.',
+            'mimes' => 'Selecione uma imagem JPG, PNG ou WebP.',
+        ],
+    ],
     'date_format' => 'Informe :attribute no formato de data válido.',
     'before_or_equal' => 'O campo :attribute não pode ser posterior a :date.',
     'boolean' => 'Informe uma opção válida para :attribute.',
@@ -14,10 +24,11 @@ return [
     'exists' => 'O item selecionado em :attribute não está mais disponível.',
     'in' => 'Selecione uma opção válida para :attribute.',
     'distinct' => 'O mesmo item não pode aparecer duas vezes na composição.',
-    'max' => ['string' => 'O campo :attribute deve ter no máximo :max caracteres.', 'array' => 'O campo :attribute deve ter no máximo :max itens.'],
+    'max' => ['file' => 'O arquivo deve ter no máximo :max KB.', 'string' => 'O campo :attribute deve ter no máximo :max caracteres.', 'array' => 'O campo :attribute deve ter no máximo :max itens.'],
     'min' => ['array' => 'Adicione pelo menos :min item à composição.', 'string' => 'O campo :attribute deve ter pelo menos :min caracteres.'],
     'gt' => ['numeric' => 'O campo :attribute deve ser maior que :value.', 'string' => 'O campo :attribute deve ser maior que :value.'],
     'attributes' => [
+        'image' => 'imagem',
         'category' => 'categoria',
         'listing_type' => 'modalidade de anúncio',
         'commission_percent' => 'comissão percentual',

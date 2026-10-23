@@ -106,7 +106,12 @@ class CatalogImagesTest extends TestCase
             'gif' => UploadedFile::fake()->image('foto.gif'),
             'large' => UploadedFile::fake()->image('foto.jpg')->size(2049),
         };
-        $this->createPage($catalog)->set('image', $file)->call('save')->assertHasErrors(['image']);
+        $message = match ($kind) {
+            'text', 'svg' => 'O arquivo selecionado não é uma imagem válida.',
+            'gif' => 'Selecione uma imagem JPG, PNG ou WebP.',
+            'large' => 'A imagem deve ter no máximo 2 MB.',
+        };
+        $this->createPage($catalog)->set('image', $file)->call('save')->assertHasErrors(['image'])->assertSee($message);
         $this->assertDatabaseCount($catalog, 0);
         Storage::disk('public')->assertDirectoryEmpty($catalog);
     }
@@ -212,6 +217,62 @@ class CatalogImagesTest extends TestCase
             app(CatalogImage::class)->deleteUnused($path, 'products');
         }
         Storage::disk('public')->assertExists(['outside.jpg', 'supplies/supply.jpg']);
+    }
+
+    #[DataProvider('catalogs')]
+    public function test_image_removal_can_be_undone_or_replaced_before_saving(string $catalog, string $model): void
+    {
+        Storage::fake('public');
+        $record = $model::factory()->create();
+        $record->forceFill(['image_path' => $catalog.'/previous.jpg'])->save();
+        Storage::disk('public')->put($record->image_path, 'previous');
+        $page = Livewire::test('pages::'.$catalog.'.form', [$catalog === 'products' ? 'product' : 'supply' => $record])
+            ->assertSee('Substituir imagem')->assertSee('Remover imagem')
+            ->call('removeSelectedImage')->assertSet('image', null)->assertSet('removeImage', true)
+            ->assertSee('A imagem cadastrada será removida ao salvar.')
+            ->assertDontSee('Imagem cadastrada de '.$record->name)
+            ->call('undoImageRemoval')->assertSet('removeImage', false)
+            ->assertSee('Imagem cadastrada de '.$record->name)
+            ->call('removeSelectedImage')
+            ->set('image', UploadedFile::fake()->image('substituta.png'))->assertSet('removeImage', false)
+            ->assertSee('Pré-visualização da imagem selecionada');
+
+        Storage::disk('public')->assertExists($catalog.'/previous.jpg');
+        $page->call('save')->assertHasNoErrors();
+        Storage::disk('public')->assertMissing($catalog.'/previous.jpg');
+        Storage::disk('public')->assertExists($record->fresh()->image_path);
+    }
+
+    #[DataProvider('catalogs')]
+    public function test_technical_upload_failure_is_translated_and_preserves_the_stored_image(string $catalog, string $model): void
+    {
+        Storage::fake('public');
+        $record = $model::factory()->create();
+        $record->forceFill(['image_path' => $catalog.'/previous.jpg'])->save();
+        Storage::disk('public')->put($record->image_path, 'previous');
+        Livewire::test('pages::'.$catalog.'.form', [$catalog === 'products' ? 'product' : 'supply' => $record])
+            ->call('_uploadErrored', 'image', null, false)->assertHasErrors(['image'])
+            ->assertSee('Não foi possível receber o arquivo. Selecione-o novamente e tente outra vez.')
+            ->assertDontSee('failed to upload');
+
+        $this->assertSame($catalog.'/previous.jpg', $record->fresh()->image_path);
+        Storage::disk('public')->assertExists($catalog.'/previous.jpg');
+    }
+
+    #[DataProvider('catalogs')]
+    public function test_selected_image_can_be_cleared_and_stored_removal_requires_saving(string $catalog, string $model): void
+    {
+        Storage::fake('public');
+        $record = $model::factory()->create();
+        $record->forceFill(['image_path' => $catalog.'/previous.jpg'])->save();
+        Storage::disk('public')->put($record->image_path, 'previous');
+        Livewire::test('pages::'.$catalog.'.form', [$catalog === 'products' ? 'product' : 'supply' => $record])
+            ->set('image', UploadedFile::fake()->image('selecionada.png'))
+            ->call('removeSelectedImage')->assertSet('image', null)->assertSet('removeImage', true)
+            ->call('save')->assertHasNoErrors();
+
+        $this->assertNull($record->fresh()->image_path);
+        Storage::disk('public')->assertMissing($catalog.'/previous.jpg');
     }
 
     public function test_contextual_breadcrumbs_use_existing_links_and_identify_the_current_page(): void

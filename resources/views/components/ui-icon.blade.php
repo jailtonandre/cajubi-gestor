@@ -1,6 +1,7 @@
 @props(['name' => 'box'])
 <svg {{ $attributes->class('ui-icon') }} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     @switch($name)
+        @case('image')<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 16 5-5 4 4 3-3 6 6"/>@break
         @case('cart')<path d="M3 3h2l3 13h11l3-9H6M9 21h.01M18 21h.01"/>@break
         @case('bank')<path d="m3 8 9-5 9 5H3ZM4 21h16M6 10v7m6-7v7m6-7v7M3 18h18"/>@break
         @case('clock')<path d="M7 3h10M7 21h10M8 3v4l4 5-4 5v4m8-18v4l-4 5 4 5v4"/>@break
