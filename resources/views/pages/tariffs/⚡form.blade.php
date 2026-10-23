@@ -8,6 +8,7 @@ use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\Validator;
 
 new #[Title('Regra de tarifa')] class extends Component
 {
@@ -24,6 +25,13 @@ new #[Title('Regra de tarifa')] class extends Component
     public string $pricing_model = 'single';
     public string $charge_basis = 'item';
     public array $tiers = [];
+    /** @var array{min_price: string, max_price: string, commission_percent: string, fixed_fee: string} */
+    public array $tierDraft = ['min_price' => '', 'max_price' => '', 'commission_percent' => '', 'fixed_fee' => ''];
+    #[Locked]
+    public ?int $editingTier = null;
+    public bool $tiersChanged = false;
+    #[Locked]
+    public string $tierMarketplace = 'mercado_livre';
     public string $conditions = '';
     public bool $conditions_verified = false;
     public string $valid_from = '';
@@ -59,34 +67,93 @@ new #[Title('Regra de tarifa')] class extends Component
             $this->fixed_fee = $profile->fixed_fee !== null ? str_replace('.', ',', $profile->fixed_fee) : '';
             $this->tiers = array_map(fn ($tier) => array_map(fn ($value) => $value === null ? '' : str_replace('.', ',', $value), $tier), $profile->tiers ?? []);
         }
+        $this->tierMarketplace = $this->channel;
     }
 
     public function updatedChannel(): void
     {
         if ($this->profile) { $this->channel = $this->profile->channel; return; }
+        if ($this->hasPendingTier() || $this->tiersChanged) {
+            $this->channel = $this->tierMarketplace;
+            $this->addError('tierDraft', 'Salve a regra ou descarte as alterações antes de trocar o marketplace.');
+            return;
+        }
         $this->reset('category', 'listing_type', 'commission_percent', 'fixed_fee', 'pricing_model', 'charge_basis', 'tiers', 'conditions', 'conditions_verified', 'valid_from', 'valid_until', 'review_on', 'observed_on', 'source', 'notes', 'confidence', 'is_active');
         $this->resetValidation();
+        $this->tierMarketplace = $this->channel;
         $this->dispatch('tariff-marketplace-changed', channel: $this->channel);
     }
 
     public function updatedPricingModel(): void
     {
-        if ($this->pricing_model === 'tiered' && $this->tiers === []) { $this->addTier(); }
+        if ($this->hasPendingTier() && $this->pricing_model !== 'tiered') {
+            $this->pricing_model = 'tiered';
+            $this->addError('tierDraft', 'Conclua ou cancele a faixa em edição antes de alterar o tipo de tarifa.');
+        }
     }
 
     public function addTier(): void
     {
-        $this->tiers[] = ['min_price' => '', 'max_price' => '', 'commission_percent' => '', 'fixed_fee' => ''];
+        $normalized = array_map(fn ($value) => $value === '' ? null : DecimalPresentation::input($value), $this->tierDraft);
+        Validator::make(['tierDraft' => $normalized], [
+            'tierDraft' => ['array:min_price,max_price,commission_percent,fixed_fee'],
+            'tierDraft.min_price' => ['required', 'string', 'regex:/\A[0-9]{1,10}(\.[0-9]{1,2})?\z/'],
+            'tierDraft.max_price' => ['nullable', 'string', 'regex:/\A[0-9]{1,10}(\.[0-9]{1,2})?\z/'],
+            'tierDraft.commission_percent' => ['nullable', 'string', 'regex:/\A[0-9]{1,3}(\.[0-9]{1,4})?\z/'],
+            'tierDraft.fixed_fee' => ['nullable', 'string', 'regex:/\A[0-9]{1,10}(\.[0-9]{1,4})?\z/'],
+        ], attributes: ['tierDraft.min_price' => 'preço inicial', 'tierDraft.max_price' => 'preço final', 'tierDraft.commission_percent' => 'comissão', 'tierDraft.fixed_fee' => 'tarifa fixa'])->validate();
+
+        if ($this->editingTier !== null) {
+            abort_unless(array_key_exists($this->editingTier, $this->tiers), 422);
+            $this->tiers[$this->editingTier] = $this->tierDraft;
+        } else {
+            $this->tiers[] = $this->tierDraft;
+        }
+        $this->tiersChanged = true;
+        $this->cancelTier();
+    }
+
+    public function editTier(int $index): void
+    {
+        if ($this->hasPendingTier()) {
+            $this->addError('tierDraft', 'Conclua ou cancele a faixa em edição antes de selecionar outra.');
+            return;
+        }
+        abort_unless(array_key_exists($index, $this->tiers), 422);
+        $this->tierDraft = $this->tiers[$index];
+        $this->editingTier = $index;
+        $this->resetValidation();
+    }
+
+    public function cancelTier(): void
+    {
+        $this->reset('tierDraft', 'editingTier');
+        $this->resetValidation();
+    }
+
+    private function hasPendingTier(): bool
+    {
+        return $this->editingTier !== null || array_any($this->tierDraft, fn ($value) => $value !== '');
     }
 
     public function removeTier(int $index): void
     {
+        if ($this->hasPendingTier()) {
+            $this->addError('tierDraft', 'Conclua ou cancele a faixa em edição antes de remover uma faixa.');
+            return;
+        }
         unset($this->tiers[$index]);
         $this->tiers = array_values($this->tiers);
+        $this->tiersChanged = true;
+        $this->resetValidation();
     }
 
     public function save(): void
     {
+        if ($this->hasPendingTier()) {
+            $this->addError('tierDraft', 'Adicione ou atualize a faixa em edição, ou cancele-a, antes de salvar a regra.');
+            return;
+        }
         $profile = $this->catalog->save([
             'channel' => $this->channel, 'category' => $this->category, 'listing_type' => $this->listing_type,
             'pricing_model' => $this->pricing_model, 'charge_basis' => $this->charge_basis,
@@ -99,12 +166,17 @@ new #[Title('Regra de tarifa')] class extends Component
             'source' => $this->source, 'notes' => $this->notes,
             'confidence' => $this->confidence, 'is_active' => $this->is_active,
         ], $this->profile);
+        $this->tiersChanged = false;
         session()->flash('success', 'Regra salva. O histórico de alterações foi preservado.');
         $this->redirectRoute('tariffs.edit', ['profile' => $profile], navigate: true);
     }
 
     public function deactivate(): void
     {
+        if ($this->hasPendingTier() || $this->tiersChanged) {
+            $this->addError('tierDraft', 'Salve a regra ou descarte as alterações de faixas antes de desativá-la.');
+            return;
+        }
         abort_unless($this->profile?->exists, 404);
         $this->catalog->setActive($this->profile, false);
         session()->flash('success', 'Regra desativada. O histórico foi preservado.');
@@ -125,7 +197,11 @@ new #[Title('Regra de tarifa')] class extends Component
 };
 ?>
 
-<div class="grid min-w-0 gap-4">
+<div class="grid min-w-0 gap-4"
+    x-data="{ hasTierChanges() { return this.$wire.tiersChanged || this.$wire.editingTier !== null || Object.values(this.$wire.tierDraft).some(value => value !== '') } }"
+    x-on:beforeunload.window="if (hasTierChanges()) { $event.preventDefault(); $event.returnValue = '' }"
+    x-on:livewire:navigate.document="if (hasTierChanges() && !window.confirm('Há alterações de faixas não salvas. Deseja sair e descartá-las?')) $event.preventDefault()"
+    x-on:click.capture.document="if ($event.target.closest('[data-tariff-marketplace-switch]') && $event.target.closest('[data-tariff-marketplace-switch]').dataset.tariffMarketplaceSwitch !== $wire.channel && hasTierChanges() && !window.confirm('Há alterações de faixas não salvas. Deseja trocar de marketplace e descartá-las?')) { $event.preventDefault(); $event.stopImmediatePropagation() }">
     <form wire:submit="save" @class(['tariff-editor panel grid gap-4 border-t-3 p-4 sm:p-5', 'border-t-cajubi-700' => $profile !== null, 'border-t-cajubi-yellow' => $profile === null])>
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 pb-4">
             <div class="min-w-0"><div class="mb-1 flex items-center gap-2"><span @class(['rounded px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide', 'bg-cajubi-50 text-cajubi-700' => $profile !== null, 'bg-amber-50 text-amber-900' => $profile === null])>{{ $profile ? 'Em edição' : 'Novo cadastro' }}</span></div><h2 class="text-lg font-semibold leading-6 tracking-tight">{{ $profile ? 'Editar regra de tarifa' : 'Nova regra de tarifa' }}</h2><p class="mt-1 text-xs text-stone-500">{{ $channel === 'shopee' ? 'Shopee' : 'Mercado Livre' }}{{ $profile ? ' · '.$profile->listing_type : '' }}</p></div>
@@ -151,18 +227,44 @@ new #[Title('Regra de tarifa')] class extends Component
         @else
             <section class="grid gap-3" aria-label="Faixas de preço">
                 <div><h3 class="text-sm font-semibold">Faixas de preço</h3><p class="mt-1 text-xs leading-5 text-stone-500">Limites inclusivos, em centavos. A próxima faixa começa um centavo após a anterior. Limite final em branco somente na última faixa, para não limitar o preço. Valores fora da cobertura não serão calculados.</p></div>
-                @foreach($tiers as $index => $tier)
-                    <div wire:key="tariff-tier-{{ $index }}" class="grid gap-3 rounded-lg border border-stone-200 bg-stone-50/50 p-4">
-                        <div class="flex items-center justify-between"><h4 class="text-xs font-semibold">Faixa {{ $index + 1 }}</h4><button type="button" wire:click="removeTier({{ $index }})" class="text-xs text-stone-500 hover:text-red-700">Remover faixa {{ $index + 1 }}</button></div>
-                        <div class="grid gap-3 sm:grid-cols-2">
-                            @foreach(['min_price' => 'Preço inicial (R$) *', 'max_price' => 'Preço final (R$)', 'commission_percent' => 'Comissão (%)', 'fixed_fee' => 'Tarifa fixa (R$)'] as $field => $label)
-                                <x-field :label="$label" for="tiers.{{ $index }}.{{ $field }}"><input id="tiers.{{ $index }}.{{ $field }}" wire:model="tiers.{{ $index }}.{{ $field }}" class="field" inputmode="decimal"></x-field>
-                            @endforeach
-                        </div>
+                <div class="grid gap-3 rounded-lg border border-stone-200 bg-stone-50/50 p-4">
+                    <h4 class="text-xs font-semibold">{{ $editingTier !== null ? 'Editar faixa '.($editingTier + 1) : 'Nova faixa' }}</h4>
+                    <div class="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+                        @foreach(['min_price' => 'Preço inicial (R$) *', 'max_price' => 'Preço final (R$)', 'commission_percent' => 'Comissão (%)', 'fixed_fee' => 'Tarifa fixa (R$)'] as $field => $label)
+                            <x-field :label="$label" for="tierDraft.{{ $field }}"><input id="tierDraft.{{ $field }}" wire:model="tierDraft.{{ $field }}" class="field" inputmode="decimal"></x-field>
+                        @endforeach
                     </div>
-                @endforeach
-                <button type="button" wire:click="addTier" class="btn-secondary justify-self-start">+ Adicionar faixa</button>
-                <p class="text-xs text-stone-500">Comissão e tarifa fixa em branco permanecem desconhecidas. Zero deve ser explícito.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" wire:click="addTier" wire:loading.attr="disabled" class="btn-secondary">{{ $editingTier !== null ? 'Atualizar faixa' : 'Adicionar faixa' }}</button>
+                        <button type="button" wire:click="cancelTier" wire:confirm="Descartar os valores do editor de faixa? As faixas da tabela serão preservadas." class="text-xs font-medium text-stone-500 hover:text-cajubi-700">Cancelar faixa</button>
+                    </div>
+                    @error('tierDraft')<p role="alert" class="text-xs text-red-700">{{ $message }}</p>@enderror
+                </div>
+                <p class="text-xs text-stone-500">Comissão e tarifa fixa em branco permanecem desconhecidas. Zero deve ser explícito. As faixas da tabela serão gravadas juntas ao salvar a regra.</p>
+                <div class="overflow-x-auto rounded-lg border border-stone-200" role="region" aria-label="Tabela de faixas adicionadas" tabindex="0">
+                    <table class="w-full min-w-[560px] text-left text-xs">
+                        <caption class="sr-only">Faixas adicionadas à regra em edição, com limites inclusivos.</caption>
+                        <thead class="table-head"><tr><th scope="col" class="px-3 py-3">Preço inicial</th><th scope="col" class="px-3 py-3">Preço final</th><th scope="col" class="px-3 py-3">Comissão</th><th scope="col" class="px-3 py-3">Tarifa fixa</th><th scope="col" class="px-3 py-3">Ações</th></tr></thead>
+                        <tbody class="divide-y divide-stone-100">
+                            @forelse($tiers as $index => $tier)
+                                <tr wire:key="tariff-tier-{{ $index }}" aria-label="Faixa {{ $index + 1 }}" @class(['bg-cajubi-50' => $editingTier === $index])>
+                                    @foreach(['min_price', 'max_price', 'commission_percent', 'fixed_fee'] as $field)
+                                        <td class="px-3 py-3 tabular-nums">
+                                            @if(($tier[$field] ?? '') === ''){{ $field === 'max_price' ? 'Sem limite' : 'Desconhecida' }}
+                                            @elseif($field === 'commission_percent'){{ $tier[$field] }}%
+                                            @else R$ {{ $tier[$field] }} @endif
+                                            @error('tiers.'.$index.'.'.$field)<p role="alert" class="mt-1 text-xs text-red-700">{{ $message }}</p>@enderror
+                                        </td>
+                                    @endforeach
+                                    <td class="px-3 py-3"><div class="flex gap-3"><button type="button" wire:click="editTier({{ $index }})" class="font-medium text-cajubi-700 hover:underline" aria-label="Editar faixa {{ $index + 1 }}">Editar</button><button type="button" wire:click="removeTier({{ $index }})" wire:confirm="Remover esta faixa da tabela? A exclusão será aplicada ao salvar a regra." class="text-stone-500 hover:text-red-700" aria-label="Remover faixa {{ $index + 1 }}">Remover</button></div></td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="5" class="px-3 py-5 text-center text-stone-500">Nenhuma faixa adicionada.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                @if($tiersChanged)<p class="text-xs font-medium text-cajubi-700" role="status">Há alterações nas faixas ainda não salvas na regra.</p>@endif
             </section>
         @endif
         <div class="grid gap-3.5 sm:grid-cols-2">

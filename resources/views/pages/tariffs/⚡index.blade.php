@@ -63,14 +63,14 @@ new #[Title('Tarifas de marketplaces')] class extends Component
 };
 ?>
 
-<div class="-mx-1 grid gap-5 sm:-mx-2">
+<div class="grid gap-5">
     <x-success/>
     <div class="grid gap-2"><p class="eyebrow">Condições comerciais</p><h1 class="page-title">Tarifas de marketplaces</h1><p class="text-sm text-stone-500">Cadastre as regras de cobrança usadas no simulador e nos cenários.</p></div>
     <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)]">
         <section class="panel min-w-0 overflow-hidden" aria-label="Regras de tarifas">
             <div class="grid grid-cols-2 gap-2 border-b border-stone-200 p-3" role="group" aria-label="Marketplace">
                 @foreach(['mercado_livre' => 'Mercado Livre', 'shopee' => 'Shopee'] as $value => $label)
-                    <button type="button" wire:click="$set('channel', '{{ $value }}')" aria-pressed="{{ $channel === $value ? 'true' : 'false' }}" @class(['rounded-lg border px-3 py-2.5 text-sm font-semibold transition', 'border-cajubi-700 bg-cajubi-50 text-cajubi-700' => $channel === $value, 'border-stone-200 text-stone-500 hover:bg-stone-50' => $channel !== $value])>{{ $label }} <span class="text-xs">({{ $this->counts[$value] ?? 0 }})</span></button>
+                    <button type="button" data-tariff-marketplace-switch="{{ $value }}" wire:click="$set('channel', '{{ $value }}')" aria-pressed="{{ $channel === $value ? 'true' : 'false' }}" @class(['rounded-lg border px-3 py-2.5 text-sm font-semibold transition', 'border-cajubi-700 bg-cajubi-50 text-cajubi-700' => $channel === $value, 'border-stone-200 text-stone-500 hover:bg-stone-50' => $channel !== $value])>{{ $label }} <span class="text-xs">({{ $this->counts[$value] ?? 0 }})</span></button>
                 @endforeach
             </div>
             <div class="grid gap-3 p-3">

@@ -223,11 +223,12 @@ class TieredTariffsTest extends TestCase
     {
         Livewire::test('pages::tariffs.form', ['marketplace' => 'shopee'])
             ->set('listing_type', 'Modalidade de teste')->set('category', 'Categoria')->set('source', 'Fonte de teste')
-            ->set('pricing_model', 'tiered')->assertCount('tiers', 1)
-            ->set('tiers.0.min_price', '0,01')->set('tiers.0.max_price', '79,99')
-            ->set('tiers.0.commission_percent', '10,1234')->set('tiers.0.fixed_fee', '4,50')
-            ->call('addTier')->set('tiers.1.min_price', '80,00')
-            ->set('tiers.1.commission_percent', '0')->set('tiers.1.fixed_fee', '0')
+            ->set('pricing_model', 'tiered')->assertCount('tiers', 0)
+            ->set('tierDraft.min_price', '0,01')->set('tierDraft.max_price', '79,99')
+            ->set('tierDraft.commission_percent', '10,1234')->set('tierDraft.fixed_fee', '4,50')
+            ->call('addTier')->assertCount('tiers', 1)->assertSet('tierDraft.min_price', '')
+            ->set('tierDraft.min_price', '80,00')
+            ->set('tierDraft.commission_percent', '0')->set('tierDraft.fixed_fee', '0')->call('addTier')
             ->call('save')->assertHasNoErrors();
         $profile = TariffProfile::query()->sole();
         $this->assertNull($profile->tiers[1]['max_price']);
@@ -235,6 +236,102 @@ class TieredTariffsTest extends TestCase
         $this->assertSame('0', $selection['fixed_fee']);
         $this->assertSame('0', $selection['commission_percent']);
         $this->assertSame('10.1234', $profile->tiers[0]['commission_percent']);
+    }
+
+    public function test_existing_four_tiers_load_without_changes_and_edit_in_the_single_editor(): void
+    {
+        $data = $this->rule();
+        $data['tiers'][] = ['min_price' => '100', 'max_price' => '199.99', 'commission_percent' => null, 'fixed_fee' => '0'];
+        $data['tiers'][] = ['min_price' => '200', 'max_price' => '299.99', 'commission_percent' => '0', 'fixed_fee' => null];
+        $profile = app(TariffCatalog::class)->save($data);
+        $original = $profile->fresh()->tiers;
+
+        $page = Livewire::test('pages::tariffs.form', ['profile' => $profile])
+            ->assertCount('tiers', 4)->assertSet('tierDraft.min_price', '')
+            ->assertSee('Tabela de faixas adicionadas')->assertSee('Desconhecida')
+            ->call('editTier', 1)->assertSet('tierDraft.min_price', '80,00')
+            ->set('tierDraft.commission_percent', '14,1234')->call('addTier')
+            ->assertCount('tiers', 4)->assertSet('editingTier', null)->assertSet('tierDraft.min_price', '');
+
+        $this->assertSame($original, $profile->fresh()->tiers);
+        $this->assertDatabaseCount('tariff_revisions', 1);
+        $page->call('save')->assertHasNoErrors();
+        $saved = $profile->fresh()->tiers;
+        $this->assertCount(4, $saved);
+        $this->assertSame('14.1234', $saved[1]['commission_percent']);
+        $this->assertSame($original[0], $saved[0]);
+        $this->assertSame($original[2], $saved[2]);
+        $this->assertSame($original[3], $saved[3]);
+        $this->assertDatabaseCount('tariff_revisions', 2);
+    }
+
+    public function test_removal_only_updates_the_table_until_the_whole_rule_is_saved(): void
+    {
+        $profile = app(TariffCatalog::class)->save($this->rule());
+        $original = $profile->tiers;
+        $page = Livewire::test('pages::tariffs.form', ['profile' => $profile])
+            ->call('removeTier', 1)->assertCount('tiers', 1)->assertSet('tiersChanged', true)
+            ->set('tierDraft.min_price', '80,00')->set('tierDraft.fixed_fee', '0')->call('addTier')
+            ->assertCount('tiers', 2);
+
+        $this->assertSame($original, $profile->fresh()->tiers);
+        $page->call('save')->assertHasNoErrors();
+        $saved = $profile->fresh()->tiers;
+        $this->assertCount(2, $saved);
+        $this->assertSame($original[0], $saved[0]);
+        $this->assertNull($saved[1]['max_price']);
+        $this->assertNull($saved[1]['commission_percent']);
+        $this->assertSame('0', $saved[1]['fixed_fee']);
+    }
+
+    public function test_pending_tier_cannot_be_silently_saved_overwritten_or_removed(): void
+    {
+        $profile = app(TariffCatalog::class)->save($this->rule());
+        $original = $profile->tiers;
+        $page = Livewire::test('pages::tariffs.form', ['profile' => $profile])
+            ->call('editTier', 0)->set('tierDraft.fixed_fee', '9,1234')
+            ->call('editTier', 1)->assertHasErrors(['tierDraft'])->assertSet('editingTier', 0)
+            ->assertSet('tierDraft.fixed_fee', '9,1234')
+            ->call('removeTier', 1)->assertHasErrors(['tierDraft'])->assertCount('tiers', 2)
+            ->call('save')->assertHasErrors(['tierDraft'])->assertSee('Adicione ou atualize a faixa em edição')
+            ->set('pricing_model', 'single')->assertSet('pricing_model', 'tiered')
+            ->call('deactivate')->assertHasErrors(['tierDraft']);
+
+        $this->assertSame($original, $profile->fresh()->tiers);
+        $this->assertTrue($profile->fresh()->is_active);
+        $this->assertDatabaseCount('tariff_revisions', 1);
+        $page->call('cancelTier')->assertSet('editingTier', null)->assertSet('tierDraft.fixed_fee', '')
+            ->call('save')->assertHasNoErrors();
+        $this->assertSame($original, $profile->fresh()->tiers);
+        $this->assertDatabaseCount('tariff_revisions', 1);
+    }
+
+    public function test_draft_precision_and_final_continuity_validation_preserve_unsaved_values(): void
+    {
+        $page = Livewire::test('pages::tariffs.form', ['marketplace' => 'shopee'])
+            ->set('listing_type', 'Teste')->set('category', 'Categoria')->set('source', 'Fonte sintética')
+            ->set('pricing_model', 'tiered')->set('tierDraft.min_price', '0,001')
+            ->call('addTier')->assertHasErrors(['tierDraft.min_price'])->assertCount('tiers', 0)
+            ->assertSet('tierDraft.min_price', '0,001')
+            ->set('tierDraft.min_price', '0')->set('tierDraft.max_price', '79,99')->call('addTier')
+            ->set('tierDraft.min_price', '80,01')->call('addTier')
+            ->call('save')->assertHasErrors(['tiers.1.min_price'])->assertCount('tiers', 2)
+            ->assertSee('sem sobreposição ou lacunas');
+
+        $this->assertDatabaseCount('tariff_profiles', 0);
+        $this->assertDatabaseCount('tariff_revisions', 0);
+        $page->call('editTier', 1)->set('tierDraft.min_price', '80,00')->call('addTier')
+            ->call('save')->assertHasNoErrors();
+        $this->assertCount(2, TariffProfile::query()->sole()->tiers);
+    }
+
+    public function test_switching_marketplaces_does_not_clear_an_unadded_tier(): void
+    {
+        Livewire::test('pages::tariffs.form', ['marketplace' => 'shopee'])
+            ->set('pricing_model', 'tiered')->set('tierDraft.min_price', '0')
+            ->set('channel', 'mercado_livre')->assertSet('channel', 'shopee')
+            ->assertSet('tierDraft.min_price', '0')->assertHasErrors(['tierDraft']);
+        $this->assertDatabaseCount('tariff_profiles', 0);
     }
 
     public function test_unknown_applicable_values_block_direct_calculation_until_explicit_manual_input(): void
