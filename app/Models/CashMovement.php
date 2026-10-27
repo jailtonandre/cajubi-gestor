@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['submission_key', 'description', 'direction', 'amount', 'expected_on'])]
+#[Fillable(['submission_key', 'description', 'direction', 'amount', 'expected_on', 'nature', 'realized_on'])]
 class CashMovement extends Model
 {
     /** @use HasFactory<CashMovementFactory> */
@@ -16,7 +16,7 @@ class CashMovement extends Model
 
     protected function casts(): array
     {
-        return ['amount' => 'decimal:2', 'expected_on' => 'immutable_date'];
+        return ['amount' => 'decimal:2', 'expected_on' => 'immutable_date', 'realized_on' => 'immutable_date', 'integration_reviewed_at' => 'immutable_datetime'];
     }
 
     public function cashProjection(): BelongsTo

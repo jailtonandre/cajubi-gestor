@@ -48,12 +48,12 @@ new #[Title('Painel Comercial')] class extends Component
 
     <section class="dashboard-indicators" aria-label="Visão geral · vendas reais de todo o período">
         <article class="dashboard-stat"><span class="dashboard-icon-badge tone-success"><x-ui-icon name="cart"/></span><div class="dashboard-stat-copy"><h2>Vendas registradas</h2><p class="dashboard-stat-value">{{ $sales['count'] }}</p><p class="dashboard-stat-note">Pedidos não cancelados</p></div></article>
-        @foreach(['gross' => ['Valor vendido', 'box', 'success', 'unknown_gross', 'Total dos produtos vendidos'], 'expected' => ['Líquido esperado', 'chart', 'gold', 'unknown_expected', 'Após tarifas e descontos informados'], 'received' => ['Total recebido', 'bank', 'success', null, 'Recebimentos menos estornos'], 'pending' => ['A receber', 'clock', 'gold', 'unknown_expected', 'Saldo dos repasses conhecidos']] as $key => [$label, $icon, $tone, $unknown, $note])
-            <article wire:key="indicator-{{ $key }}" class="dashboard-stat"><span class="dashboard-icon-badge tone-{{ $tone }}"><x-ui-icon :name="$icon"/></span><div class="dashboard-stat-copy"><h2>{{ $label }}</h2>
+        @foreach(['gross' => ['Valor vendido', 'box', 'success', 'unknown_gross', 'Total dos produtos vendidos'], 'expected' => ['Líquido esperado', 'chart', 'gold', 'unknown_expected', 'Após tarifas e descontos informados'], 'received' => ['Total recebido', 'bank', 'success', null, 'Recebimentos menos estornos'], 'pending' => ['A receber', 'clock', 'info', 'unknown_expected', 'Saldo dos repasses conhecidos']] as $key => [$label, $icon, $tone, $unknown, $note])
+            <article wire:key="indicator-{{ $key }}" class="dashboard-stat {{ $key === 'pending' ? 'dashboard-stat-pending' : ($key === 'received' ? 'dashboard-stat-received' : '') }}"><span class="dashboard-icon-badge tone-{{ $tone }}"><x-ui-icon :name="$icon"/></span><div class="dashboard-stat-copy"><h2>{{ $label }}</h2>
                 <div class="dashboard-stat-value">
                     @if($sales['count'] === 0)<span class="dashboard-unknown">—</span>
                     @elseif($unknown !== null && $sales[$unknown] === $sales['count'])<span class="dashboard-unknown-text">Aguardando dados</span>
-                    @else<x-money :value="$sales[$key]"/>
+                    @else<x-money :value="$sales[$key]" :class="str_starts_with($sales[$key], '-') ? 'text-red-700' : ''"/>
                     @endif
                 </div>
                 @if($unknown !== null && $sales[$unknown] > 0)<p class="dashboard-stat-note text-amber-800">{{ $sales[$unknown] }} venda(s) sem dados suficientes; total limitado aos valores conhecidos.</p>
@@ -61,7 +61,7 @@ new #[Title('Painel Comercial')] class extends Component
                 @elseif(in_array($key, ['received', 'pending']) && $visual['progress'])
                     @php($percentage = $visual['progress'][$key])
                     <p class="dashboard-stat-note"><strong>{{ \App\Services\DecimalPresentation::format($percentage, 1) }}%</strong> do esperado</p>
-                    <div class="dashboard-progress" role="progressbar" aria-label="{{ $key === 'received' ? 'Proporção recebida' : 'Proporção a receber' }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ $percentage }}"><span class="{{ $key === 'pending' ? 'progress-gold' : '' }}" style="width: {{ $percentage }}%"></span></div>
+                    <div class="dashboard-progress" role="progressbar" aria-label="{{ $key === 'received' ? 'Proporção recebida' : 'Proporção a receber' }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ $percentage }}"><span class="{{ $key === 'pending' ? 'progress-info' : '' }}" style="width: {{ $percentage }}%"></span></div>
                 @else<p class="dashboard-stat-note">{{ $note }}</p>
                 @endif
             </div></article>
@@ -73,12 +73,18 @@ new #[Title('Painel Comercial')] class extends Component
         <section class="dashboard-card dashboard-cash" aria-labelledby="cash-title">
             <div class="dashboard-card-heading"><h2 id="cash-title"><span class="dashboard-icon-badge tone-success"><x-ui-icon name="wallet"/></span>Fluxo de caixa <span class="heading-aside">8 semanas</span></h2><a href="{{ route('cash-flow') }}" wire:navigate class="dashboard-text-link">Abrir fluxo de caixa <x-ui-icon name="arrow"/></a></div>
             @if($forecast)
-                <p class="dashboard-period">Previsão manual · {{ $overview['projection']->starts_on->format('d/m/Y') }} a {{ $overview['projection']->starts_on->addDays(55)->format('d/m/Y') }}</p>
+                @if($overview['cash_data']['enabled'])
+                    <dl class="mb-3 grid gap-2 text-xs sm:grid-cols-2">@foreach(['realized_inflows' => 'Entradas realizadas', 'planned_inflows' => 'Entradas previstas', 'realized_outflows' => 'Saídas realizadas', 'planned_outflows' => 'Saídas previstas'] as $key => $label)<div class="flex flex-wrap justify-between gap-2"><dt>{{ $label }}</dt><dd class="font-medium"><x-money :value="$forecast[$key]"/></dd></div>@endforeach</dl>
+                    @if($overview['cash_data']['pending'] !== [])<p class="dashboard-inline-note tone-warning">{{ count($overview['cash_data']['pending']) }} pendência(s) sem previsão confiável não entram no saldo. <a href="{{ route('cash-flow') }}" wire:navigate class="underline">Revisar no Fluxo de Caixa</a></p>@endif
+                @else
+                    <p class="dashboard-footnote">Integração com Vendas aguardando revisão e ativação no Fluxo de Caixa.</p>
+                @endif
+                <p class="dashboard-period">{{ $overview['cash_data']['enabled'] ? 'Projeção integrada' : 'Previsão manual' }} · {{ $overview['projection']->starts_on->format('d/m/Y') }} a {{ $overview['projection']->starts_on->addDays(55)->format('d/m/Y') }}</p>
                 @if($overview['projection_expired'])<p class="dashboard-inline-note tone-warning">Este período já terminou. Revise a data inicial no Fluxo de Caixa para avaliar as próximas semanas.</p>@endif
                 @if($overview['has_cash_movements'])
                 <div class="dashboard-cash-values">
                     <div><h3>Saldo inicial</h3><x-money :value="$overview['projection']->opening_balance"/><small>Informado na projeção</small></div>
-                    <div><h3>Menor saldo projetado</h3><x-money :value="$forecast['minimum']" :class="$forecast['first_shortfall'] ? 'text-red-700' : ''"/><small>Inclui saldos diários</small></div>
+                    <div><h3>Menor saldo do período</h3><x-money :value="$forecast['minimum']" :class="$forecast['first_shortfall'] ? 'text-red-700' : ''"/><small>Menor valor encontrado entre os saldos diários das próximas 8 semanas.</small></div>
                     <div><h3>Capital adicional</h3><x-money :value="$forecast['additional_capital']"/><small>Necessário no período</small></div>
                     <div><h3>Saldo ao final</h3><x-money :value="$forecast['closing']" :class="str_starts_with($forecast['closing'], '-') ? 'text-red-700' : 'text-cajubi-700'"/><small>Fim da oitava semana</small></div>
                 </div>
@@ -87,13 +93,13 @@ new #[Title('Painel Comercial')] class extends Component
                 <p class="dashboard-chart-caption"><span class="chart-legend-dot"></span>Menor ponto exibido: <x-money :value="$lowestPoint['value']"/> · {{ $lowestPoint['label'] }}.</p>
                 <details class="dashboard-data-details"><summary>Consultar valores do gráfico</summary><p class="dashboard-footnote">Pontos = saldo inicial e fechamentos semanais. O menor saldo considera também os dias entre esses pontos.</p><div class="overflow-x-auto"><table class="dashboard-table"><thead><tr><th>Período</th><th>Saldo exibido</th></tr></thead><tbody>@foreach($visual['chart']['points'] as $point)<tr wire:key="chart-data-{{ $loop->index }}"><td>{{ $point['label'] }} · {{ $point['date'] }}</td><td><x-money :value="$point['value']"/></td></tr>@endforeach</tbody></table></div></details>
                 @else
-                    <div class="dashboard-empty dashboard-empty-chart"><h3>Sem movimentações previstas cadastradas.</h3><p>Adicione entradas e saídas para acompanhar as oito semanas.</p><p>Saldo inicial informado: <x-money :value="$overview['projection']->opening_balance"/>.</p><a href="{{ route('cash-flow') }}" wire:navigate class="dashboard-text-link">Preparar fluxo de caixa <x-ui-icon name="arrow"/></a></div>
+                    <div class="dashboard-empty dashboard-empty-chart"><h3>Sem movimentações no período.</h3><p>Adicione entradas e saídas para acompanhar as oito semanas.</p><p>Saldo inicial informado: <x-money :value="$overview['projection']->opening_balance"/>.</p><a href="{{ route('cash-flow') }}" wire:navigate class="dashboard-text-link">Preparar fluxo de caixa <x-ui-icon name="arrow"/></a></div>
                 @endif
                 @if($forecast['first_shortfall'])<p class="dashboard-inline-note tone-danger">Falta de caixa prevista a partir de {{ \Carbon\CarbonImmutable::parse($forecast['first_shortfall'])->format('d/m/Y') }} no período salvo.</p>@endif
             @else
                 <div class="dashboard-empty dashboard-empty-chart"><h3>Projeção ainda não cadastrada</h3><p>Informe o saldo inicial e as movimentações para acompanhar as oito semanas.</p><a href="{{ route('cash-flow') }}" wire:navigate class="dashboard-text-link">Preparar fluxo de caixa <x-ui-icon name="arrow"/></a></div>
             @endif
-            <p class="dashboard-footnote">Previsão manual e recebimentos reais são acompanhados separadamente.</p>
+            <p class="dashboard-footnote">{{ ($overview['cash_data']['enabled'] ?? false) ? 'A projeção reúne movimentações manuais, recebimentos realizados e repasses previstos de Vendas.' : 'Ative a integração no Fluxo de Caixa para incluir os registros de Vendas.' }}</p>
         </section>
 
         <section class="dashboard-card dashboard-attention" aria-labelledby="attention-title">
@@ -101,7 +107,9 @@ new #[Title('Painel Comercial')] class extends Component
             @if($visual['attention'] === [])<div class="dashboard-empty"><span class="dashboard-icon-badge tone-success"><x-ui-icon name="check"/></span><p>Nenhuma pendência identificada nos dados disponíveis.</p></div>
             @else
                 <ul class="dashboard-attention-list">
-                    @foreach($visual['attention'] as $card)<li wire:key="attention-{{ $loop->index }}"><a href="{{ $card['url'] }}" wire:navigate class="dashboard-attention-item tone-{{ $card['tone'] }}"><span class="dashboard-icon-badge"><x-ui-icon :name="$card['icon']" :class="$card['tone'] === 'neutral' ? 'text-amber-700' : ''"/></span><span><strong>{{ $card['title'] }}</strong><small>{{ $card['description'] }}</small>@if(isset($card['action']))<span class="dashboard-attention-action">{{ $card['action'] }}</span>@endif</span><x-ui-icon name="chevron" class="attention-chevron"/></a></li>@endforeach
+                    @foreach($visual['attention'] as $card)
+                        @php($attentionTone = match (true) { $card['tone'] === 'warning' && in_array($card['icon'], ['wallet', 'clock'], true) => 'info', $card['tone'] === 'warning' && $card['icon'] === 'alert' => 'danger', default => $card['tone'] })
+                        <li wire:key="attention-{{ $loop->index }}"><a href="{{ $card['url'] }}" wire:navigate class="dashboard-attention-item tone-{{ $attentionTone }}"><span class="dashboard-icon-badge"><x-ui-icon :name="$card['icon']" :class="$card['tone'] === 'neutral' ? 'text-amber-700' : ''"/></span><span><strong>{{ $card['title'] }}</strong><small>{{ $card['description'] }}</small>@if(isset($card['action']))<span class="dashboard-attention-action">{{ $card['action'] }}</span>@endif</span><x-ui-icon name="chevron" class="attention-chevron"/></a></li>@endforeach
                 </ul>
             @endif
         </section>

@@ -16,7 +16,7 @@ class CashProjection extends Model
 
     protected function casts(): array
     {
-        return ['opening_balance' => 'decimal:2', 'starts_on' => 'immutable_date'];
+        return ['opening_balance' => 'decimal:2', 'starts_on' => 'immutable_date', 'sales_integration_enabled' => 'boolean', 'integration_reviewed_at' => 'immutable_datetime'];
     }
 
     public function movements(): HasMany

@@ -12,16 +12,15 @@ use Illuminate\Validation\ValidationException;
 
 class CommercialDashboard
 {
-    public function __construct(private SalesLedger $sales, private CashFlowProjection $cash, private ProductCostCalculator $costs, private TariffCatalog $tariffs) {}
+    public function __construct(private SalesLedger $sales, private CashFlowIntegration $cash, private ProductCostCalculator $costs, private TariffCatalog $tariffs) {}
 
     /** @return array<string, mixed> */
     public function snapshot(): array
     {
         $sales = $this->sales->summary();
         $projection = CashProjection::query()->withCount('movements')->find(1);
-        $forecast = $projection ? $this->cash->calculate($projection, $projection->movements()
-            ->whereDate('expected_on', '>=', $projection->starts_on->toDateString())
-            ->whereDate('expected_on', '<=', $projection->starts_on->addDays(55)->toDateString())->cursor()) : null;
+        $cashData = $projection ? $this->cash->snapshot($projection) : null;
+        $forecast = $cashData['forecast'] ?? null;
         $products = $this->productReferences();
         $tariffs = TariffProfile::query()->where('is_active', true)->orderBy('channel')->orderBy('category')->orderBy('id')->get()
             ->map(fn (TariffProfile $profile): array => ['profile' => $profile, 'warnings' => $this->tariffs->warnings($profile)])->all();
@@ -47,7 +46,7 @@ class CommercialDashboard
 
         $hasCashMovements = $forecast !== null && collect($forecast['weeks'])->contains(fn (array $week): bool => ! BigDecimal::of($week['inflows'])->isZero() || ! BigDecimal::of($week['outflows'])->isZero());
 
-        return ['sales' => $sales, 'projection' => $projection, 'forecast' => $forecast, 'has_cash_movements' => $hasCashMovements, 'projection_expired' => $expiredProjection, 'alerts' => $alerts,
+        return ['cash_data' => $cashData, 'sales' => $sales, 'projection' => $projection, 'forecast' => $forecast, 'has_cash_movements' => $hasCashMovements, 'projection_expired' => $expiredProjection, 'alerts' => $alerts,
             'products' => $products, 'product_count' => Product::query()->where('status', 'active')->count(),
             'tariffs' => $tariffs, 'tariff_count' => count($tariffs),
             'estimated_tariffs' => collect($tariffs)->filter(fn (array $reference): bool => $reference['profile']->confidence === 'estimated')->count(),

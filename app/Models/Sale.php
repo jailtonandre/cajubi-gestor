@@ -17,7 +17,7 @@ class Sale extends Model
     {
         return ['sold_on' => 'immutable_date', 'expected_on' => 'immutable_date', 'cost_captured_at' => 'immutable_datetime',
             'cancelled_at' => 'immutable_datetime', 'cost_snapshot' => 'array', 'product_snapshot' => 'array',
-            'quantity' => 'integer', 'version' => 'integer', 'reconciliation_closed' => 'boolean',
+            'cash_forecast_reviewed_refund_id' => 'integer', 'quantity' => 'integer', 'version' => 'integer', 'reconciliation_closed' => 'boolean',
             'gross_amount' => 'decimal:2', 'seller_discount' => 'decimal:2', 'marketplace_fees' => 'decimal:2',
             'seller_freight' => 'decimal:2', 'other_adjustment' => 'decimal:2', 'expedition_cost' => 'decimal:2', 'paid_labor' => 'decimal:2'];
     }

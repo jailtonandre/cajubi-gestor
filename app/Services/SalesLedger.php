@@ -260,6 +260,24 @@ class SalesLedger
         return $summary;
     }
 
+    public function confirmCashForecast(Sale $sale, int $version): void
+    {
+        DB::transaction(function () use ($sale, $version): void {
+            $record = Sale::query()->lockForUpdate()->findOrFail($sale->id);
+            $this->assertEditable($record, $version);
+            $figures = $this->figures($record);
+            if ($record->reconciliation_closed || $record->expected_on === null
+                || $record->expected_on->toDateString() < now(CashFlowIntegration::TIMEZONE)->toDateString()
+                || $figures['pending'] === null || ! BigDecimal::of($figures['pending'])->isPositive()) {
+                throw ValidationException::withMessages(['cash_forecast' => 'Revise o valor, a data futura e a conferência antes de confirmar a previsão.']);
+            }
+            $record->cash_forecast_reviewed_refund_id = $record->receipts->where('kind', 'refund')->max('id');
+            $record->version++;
+            $record->save();
+            $this->revision($record, 'cash_forecast_reviewed');
+        });
+    }
+
     private function assertEditable(Sale $sale, ?int $version): void
     {
         if ($sale->cancelled_at !== null) {

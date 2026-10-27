@@ -120,7 +120,7 @@ class CommercialDashboardTest extends TestCase
         $this->assertSame('-65.00', $overview['forecast']['closing']);
         $this->assertSame('2026-10-23', $overview['forecast']['first_shortfall']);
         $this->assertContains('Falta de caixa prevista no período', array_column($overview['alerts'], 'label'));
-        $this->get(route('commercial-dashboard'))->assertOk()->assertSee('R$ -65,00')->assertSee('23/10/2026')->assertSee('Previsão manual e recebimentos reais são acompanhados separadamente.');
+        $this->get(route('commercial-dashboard'))->assertOk()->assertSee('R$ -65,00')->assertSee('23/10/2026')->assertSee('Ative a integração no Fluxo de Caixa para incluir os registros de Vendas.');
         $this->assertSame('100.00', $projection->fresh()->opening_balance);
         $this->assertDatabaseCount('cash_movements', 5);
     }
@@ -223,7 +223,7 @@ class CommercialDashboardTest extends TestCase
         $projection = CashProjection::factory()->create(['starts_on' => '2026-01-01']);
 
         $this->get(route('commercial-dashboard'))->assertOk()->assertSee('Este período já terminou.')->assertSee('revise as datas')
-            ->assertSee('Sem movimentações previstas cadastradas.');
+            ->assertSee('Sem movimentações no período.');
 
         $this->assertSame('2026-01-01', $projection->fresh()->starts_on->toDateString());
     }
@@ -396,7 +396,7 @@ class CommercialDashboardTest extends TestCase
         $overview = app(CommercialDashboard::class)->snapshot();
         $this->assertFalse($overview['has_cash_movements']);
         $this->assertSame('850.00', $overview['forecast']['closing']);
-        $this->get(route('commercial-dashboard'))->assertOk()->assertSee('Sem movimentações previstas cadastradas.')
+        $this->get(route('commercial-dashboard'))->assertOk()->assertSee('Sem movimentações no período.')
             ->assertSee('Saldo inicial informado:')->assertSee('R$ 850,00')->assertDontSee('cash-chart-title', false);
         $this->assertSame('850.00', $projection->fresh()->opening_balance);
         $this->assertDatabaseCount('cash_movements', 0);

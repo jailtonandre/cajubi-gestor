@@ -8,7 +8,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
 </head>
-<body @class(['min-h-screen bg-stone-50 font-sans text-stone-800 antialiased', 'dashboard-shell' => request()->routeIs('commercial-dashboard', 'products.*', 'supplies.*', 'tariffs.*', 'simulator'), 'catalog-shell' => request()->routeIs('products.*', 'supplies.*')])>
+<body @class(['min-h-screen bg-stone-50 font-sans text-stone-800 antialiased', 'dashboard-shell' => request()->routeIs('commercial-dashboard', 'products.*', 'supplies.*', 'tariffs.*', 'simulator', 'scenarios', 'viability', 'cash-flow', 'sales'), 'catalog-shell' => request()->routeIs('products.*', 'supplies.*')])>
     <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:z-50 focus:bg-white focus:p-4">Ir para o conteúdo</a>
     <div class="lg:grid lg:min-h-screen lg:grid-cols-[240px_1fr]">
         <aside class="admin-sidebar border-b border-stone-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-y-auto lg:border-r lg:border-b-0">

@@ -222,6 +222,31 @@ class CommercialViabilityTest extends TestCase
             ->call('removeLot', 0)->assertSet('selected_lot', '')->assertSee('Adicione um lote para começar.');
     }
 
+    public function test_compact_planning_preserves_duplicate_expense_controls_and_lot_comparison(): void
+    {
+        [$product] = $this->product();
+        $component = Livewire::test('pages::viability')
+            ->assertSee('Planejar o lote')->assertSee('Planejar o investimento')->assertSee('Resultados estimados')
+            ->set('product_id', (string) $product->id)
+            ->set('lots.0.units', '10')->set('lots.0.additional_cost', '0')
+            ->set('lots.1.units', '20')->set('lots.1.additional_cost', '0')
+            ->set('receipt_days', '0')->set('supplier_days', '0')
+            ->set('monthly_operating', '0')->set('reserve', '0')
+            ->call('addExpense')->set('expenses.0.name', 'Embalagens já no produto')
+            ->set('expenses.0.category', 'inventory')->set('expenses.0.coverage', 'included_in_lot')
+            ->set('expenses.0.amount', '20')->set('expenses_reviewed', true)
+            ->assertSee('R$ 545,00')->assertSee('R$ 1.090,00');
+
+        $this->assertSame('545.0000', $component->get('funding')['result']['total_resources']);
+        $this->assertSame('20', $component->get('funding')['result']['excluded_duplicates']);
+        $next = $component->get('lots')[1]['key'];
+        $component->set('selected_lot', $next)->assertSet('expenses_reviewed', false)
+            ->set('expenses_reviewed', true);
+        $this->assertSame('1090.0000', $component->get('funding')['result']['total_resources']);
+        $component->set('expenses.0.category', 'equipment')->set('expenses_reviewed', true)->assertSee('Equipamentos não fazem parte do custo do lote.');
+        $this->assertNull($component->get('funding')['result']);
+    }
+
     private function product(): array
     {
         $product = Product::factory()->create(['net_weight_grams' => '1000']);

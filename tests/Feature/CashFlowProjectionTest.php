@@ -195,6 +195,43 @@ class CashFlowProjectionTest extends TestCase
         $this->assertSame('10.00', $movement->fresh()->amount);
     }
 
+    public function test_compact_summary_uses_saved_period_and_exact_reference_amounts(): void
+    {
+        $projection = CashProjection::factory()->create(['id' => 1, 'opening_balance' => '1634.14', 'starts_on' => '2026-10-22']);
+        CashMovement::factory()->for($projection)->createMany([
+            ['description' => 'Balança Digital 40kg', 'expected_on' => '2026-10-27', 'amount' => '169.90'],
+            ['description' => 'Seladora 40cm', 'expected_on' => '2026-10-27', 'amount' => '359.00'],
+            ['description' => 'Fora do período', 'expected_on' => '2026-12-17', 'direction' => 'inflow', 'amount' => '900.00'],
+        ]);
+
+        $page = Livewire::test('pages::cash-flow')->assertSee('R$ 1.634,14')->assertSee('R$ 528,90')
+            ->assertSee('R$ 1.105,24')->assertSee('Balança Digital 40kg')->assertSee('Seladora 40cm');
+
+        $this->assertSame('0.00', $page->get('visual')['inflows']);
+        $this->assertSame('528.90', $page->get('visual')['outflows']);
+        $this->assertSame('1105.24', $page->get('forecast')['closing']);
+        $page->set('opening_balance', '999,00');
+        $this->assertSame('1105.24', $page->get('forecast')['closing']);
+        $this->assertDatabaseCount('cash_movements', 3);
+    }
+
+    public function test_movement_editor_opens_retains_invalid_input_and_closes_after_save_or_cancel(): void
+    {
+        $page = Livewire::test('pages::cash-flow')->assertSet('show_movement_form', false)
+            ->call('newMovement')->assertSet('show_movement_form', true)->assertDispatched('cash-movement-opened')
+            ->set('description', 'Nova previsão')->set('expected_on', '2026-10-27')->set('amount', '0')
+            ->call('saveMovement')->assertHasErrors(['amount'])->assertSet('show_movement_form', true)
+            ->assertSet('description', 'Nova previsão')->assertSee('O valor deve ser maior que zero.')
+            ->set('amount', '10,00')->call('saveMovement')->assertHasNoErrors()->assertSet('show_movement_form', false);
+        $movement = CashMovement::query()->sole();
+
+        $page->call('editMovement', $movement->id)->assertSet('show_movement_form', true)->assertSet('amount', '10,00')
+            ->set('amount', '99,00')->call('cancelEdit')->assertSet('show_movement_form', false);
+
+        $this->assertSame('10.00', $movement->fresh()->amount);
+        $this->assertDatabaseCount('cash_movements', 1);
+    }
+
     public function test_forecast_descriptions_are_escaped(): void
     {
         Livewire::test('pages::cash-flow');
